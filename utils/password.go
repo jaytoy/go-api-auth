@@ -7,13 +7,13 @@ import (
 )
 
 func HashPassword(password string) string {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		log.Panic(err)
 	}
-	return string(bytes)
+	return string(hashedPassword)
 }
 
 func VerifyPassword(userpassword string, givenpassword string) error {
-	return bcrypt.CompareHashAndPassword([]byte(givenpassword), []byte(userpassword))
+	return bcrypt.CompareHashAndPassword([]byte(userpassword), []byte(givenpassword))
 }

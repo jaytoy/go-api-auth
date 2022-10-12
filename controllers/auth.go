@@ -42,7 +42,7 @@ func (ac *AuthController) SignUp(c *gin.Context) {
 		LastName:  payload.LastName,
 		Email:     strings.ToLower(payload.Email),
 		Password:  hashedPassword,
-		Verified:  true,
+		Verified:  false,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -76,7 +76,7 @@ func (ac *AuthController) SignUp(c *gin.Context) {
 
 	// Send Email
 	emailData := utils.EmailData{
-		URL:       config.ClientOrigin + "/verifyemail/" + code,
+		URL:       config.ClientOrigin + "/verify/" + code,
 		FirstName: firstName,
 		Subject:   "Your account verification code",
 	}
@@ -104,7 +104,6 @@ func (ac *AuthController) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	updatedUser.VerificationCode = ""
 	updatedUser.Verified = true
 	ac.DB.Save(&updatedUser)
 
@@ -122,7 +121,7 @@ func (ac *AuthController) Login(c *gin.Context) {
 	var user models.User
 	result := ac.DB.First(&user, "email = ?", strings.ToLower(payload.Email))
 	if result.Error != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": "Invalid email or Password"})
+		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": "Invalid email"})
 		return
 	}
 
@@ -132,36 +131,25 @@ func (ac *AuthController) Login(c *gin.Context) {
 	}
 
 	if err := utils.VerifyPassword(user.Password, payload.Password); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": "Invalid email or Password"})
+		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": "Invalid Password"})
 		return
 	}
 
 	config, _ := utils.LoadConfig(".")
 
-	// Generate Tokens
-	access_token, err := utils.CreateToken(config.AccessTokenExpiresIn, user.ID, config.AccessTokenPrivateKey)
+	// Generate Token
+	token, err := utils.GenerateToken(config.TokenExpiresIn, user.ID, config.TokenSecret)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
 		return
 	}
 
-	refresh_token, err := utils.CreateToken(config.RefreshTokenExpiresIn, user.ID, config.RefreshTokenPrivateKey)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
-		return
-	}
+	c.SetCookie("token", token, config.TokenMaxAge*60, "/", "localhost", false, true)
 
-	c.SetCookie("access_token", access_token, config.AccessTokenMaxAge*60, "/", "localhost", false, true)
-	c.SetCookie("refresh_token", refresh_token, config.RefreshTokenMaxAge*60, "/", "localhost", false, true)
-	c.SetCookie("logged_in", "true", config.AccessTokenMaxAge*60, "/", "localhost", false, false)
-
-	c.JSON(http.StatusOK, gin.H{"status": "success", "access_token": access_token})
+	c.JSON(http.StatusOK, gin.H{"status": "success", "token": token})
 }
 
 func (ac *AuthController) Logout(c *gin.Context) {
-	c.SetCookie("access_token", "", -1, "/", "localhost", false, true)
-	c.SetCookie("refresh_token", "", -1, "/", "localhost", false, true)
-	c.SetCookie("logged_in", "", -1, "/", "localhost", false, false)
-
+	c.SetCookie("token", "", -1, "/", "localhost", false, true)
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
